@@ -14,11 +14,10 @@ import (
 )
 
 func TestCheckMethod(t *testing.T) {
+	var called bool
 	h := httptest.NewServer(hapi.CheckMethod("POST",
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "POST" {
-				t.Errorf("Handler body called with method %q", r.Method)
-			}
+			called = true
 		}),
 	))
 
@@ -28,16 +27,19 @@ func TestCheckMethod(t *testing.T) {
 	} else if sc, want := rsp.StatusCode, http.StatusMethodNotAllowed; sc != want {
 		t.Errorf("Response: got code %d, want %d", sc, want)
 	}
+	if called {
+		t.Error("The handler was called, but should not have been")
+		called = false
+	}
 
 	// A POST request should trigger the handler but not report an error.
-	req, err := http.NewRequest("POST", h.URL, nil)
-	if err != nil {
-		t.Fatalf("Construct request: %v", err)
-	}
-	if rsp, err := h.Client().Do(req); err != nil {
+	if rsp, err := h.Client().Post(h.URL, "text/plain", nil); err != nil {
 		t.Fatalf("Request failed: %v", err)
 	} else if sc, want := rsp.StatusCode, http.StatusOK; sc != want {
 		t.Errorf("Response: got code %d, want %d", sc, want)
+	}
+	if !called {
+		t.Error("The handler was not called, but should have been")
 	}
 }
 
