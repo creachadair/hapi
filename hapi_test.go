@@ -61,7 +61,7 @@ func TestHandleJSON(t *testing.T) {
 	}))
 
 	call := hapi.CallJSON[params, result]("POST", h.URL+"/testpath")
-	r, _, err := call(context.Background(), h.Client(), params{ID: "test"})
+	r, _, err := call(context.Background(), h.Client().Do, params{ID: "test"})
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestCallJSON(t *testing.T) {
 	call := hapi.CallJSON[int, bool]("POST", h.URL)
 
 	// A successful call should report a true value.
-	if r, _, err := call(context.Background(), h.Client(), 200); err != nil {
+	if r, _, err := call(context.Background(), h.Client().Do, 200); err != nil {
 		t.Errorf("Call 200: unexpected error: %v", err)
 	} else if !r {
 		t.Error("Call 200: result should be true")
@@ -99,7 +99,7 @@ func TestCallJSON(t *testing.T) {
 
 	checkError := func(t *testing.T, arg int, ctype, want string) {
 		t.Helper()
-		r, rsp, err := call(context.Background(), h.Client(), arg)
+		r, rsp, err := call(context.Background(), h.Client().Do, arg)
 		if err == nil {
 			t.Fatalf("Call %v: got %v, want error", arg, r)
 		}
@@ -142,7 +142,7 @@ func TestPlumbing(t *testing.T) {
 
 	call := hapi.CallJSON[string, string]("POST", h.URL)
 
-	r, rsp, err := call(context.Background(), h.Client(), "ok")
+	r, rsp, err := call(context.Background(), h.Client().Do, "ok")
 	if err != nil {
 		t.Fatalf("Call failed: %v", err)
 	}
@@ -168,13 +168,10 @@ func TestEditRequestClient(t *testing.T) {
 
 	call := hapi.CallJSON[string, string]("POST", h.URL)
 	t.Run("EditOK", func(t *testing.T) {
-		ec := hapi.EditRequestClient{
-			Client: h.Client(),
-			Edit: func(req *http.Request) error {
-				req.Header.Set("authorization", "open sesame")
-				return nil
-			},
-		}
+		ec := hapi.EditRequest(h.Client().Do, func(r *http.Request) error {
+			r.Header.Set("authorization", "open sesame")
+			return nil
+		})
 
 		r, _, err := call(context.Background(), ec, "Ali Baba")
 		if err != nil {
@@ -185,25 +182,11 @@ func TestEditRequestClient(t *testing.T) {
 		}
 	})
 
-	t.Run("EditNone", func(t *testing.T) {
-		ec := hapi.EditRequestClient{Client: h.Client(), Edit: nil}
-
-		r, _, err := call(context.Background(), ec, "Don Quixote")
-		if ce, ok := err.(hapi.CallError); !ok {
-			t.Errorf("Call: got (%+v, %+v), want CallError", r, err)
-		} else if got, want := ce.Code, http.StatusUnauthorized; got != want {
-			t.Errorf("Call: got status %d, want %d", got, want)
-		} else {
-			t.Logf("Error response OK: %q", string(ce.Body))
-		}
-	})
-
 	t.Run("EditError", func(t *testing.T) {
 		testError := errors.New("computer says no")
-		ec := hapi.EditRequestClient{
-			Client: h.Client(),
-			Edit:   func(*http.Request) error { return testError },
-		}
+		ec := hapi.EditRequest(h.Client().Do, func(r *http.Request) error {
+			return testError
+		})
 
 		r, _, err := call(context.Background(), ec, "Keyser Soze")
 		if !errors.Is(err, testError) {
@@ -222,7 +205,7 @@ func TestJSONError(t *testing.T) {
 	}))
 
 	call := hapi.CallJSON[int, bool]("POST", h.URL)
-	r, _, err := call(context.Background(), h.Client(), 0)
+	r, _, err := call(context.Background(), h.Client().Do, 0)
 	if ce, ok := err.(hapi.CallError); !ok {
 		t.Errorf("Call: got (%+v, %+v), want CallError", r, err)
 	} else if got := string(ce.Body); got != testError {

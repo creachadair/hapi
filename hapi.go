@@ -148,8 +148,8 @@ func HandleJSON[P, R any](fn func(context.Context, P) (R, error)) http.HandlerFu
 // error with concrete type CallError.
 //
 // As a special case, passing nil for the client uses http.DefaultClient.
-func CallJSON[P, R any](method, url string) func(context.Context, HTTPClient, P) (R, *http.Response, error) {
-	return func(ctx context.Context, cli HTTPClient, params P) (R, *http.Response, error) {
+func CallJSON[P, R any](method, url string) func(context.Context, DoHTTP, P) (R, *http.Response, error) {
+	return func(ctx context.Context, do DoHTTP, params P) (R, *http.Response, error) {
 		var r0 R
 		pdata, err := json.Marshal(params)
 		if err != nil {
@@ -160,10 +160,10 @@ func CallJSON[P, R any](method, url string) func(context.Context, HTTPClient, P)
 			return r0, nil, err
 		}
 		req.Header.Set("content-type", "application/json")
-		if cli == nil {
-			cli = http.DefaultClient
+		if do == nil {
+			do = http.DefaultClient.Do
 		}
-		rsp, err := cli.Do(req)
+		rsp, err := do(req)
 		if err != nil {
 			return r0, nil, err
 		}
@@ -241,26 +241,17 @@ func ErrorStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-// HTTPClient is the subset of the http.Client interface used by this package.
-type HTTPClient interface {
-	Do(*http.Request) (*http.Response, error)
-}
+// DoHTTP is a function implementing the http.RoundTripper interface.
+type DoHTTP func(*http.Request) (*http.Response, error)
 
-// An EditRequestClient wraps an HTTP client with a callback that is called
-// with each request. If the callback reports an error, the request fails;
-// otherwise any changes the callback made to the request are forwarded to the
-// underlying client. If the callback is nil, all requests are forwarded
-// without modification.
-type EditRequestClient struct {
-	Client HTTPClient
-	Edit   func(*http.Request) error
-}
-
-func (e EditRequestClient) Do(r *http.Request) (*http.Response, error) {
-	if e.Edit != nil {
-		if err := e.Edit(r); err != nil {
+// EditRequest wraps a DoHTTP function with a callback that is called for each
+// request. If the callback reports an error, the request fails; otherwise it
+// acts as the given function.
+func EditRequest(do DoHTTP, edit func(*http.Request) error) DoHTTP {
+	return func(r *http.Request) (*http.Response, error) {
+		if err := edit(r); err != nil {
 			return nil, err
 		}
+		return do(r)
 	}
-	return e.Client.Do(r)
 }
